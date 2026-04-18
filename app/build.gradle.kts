@@ -42,6 +42,8 @@ android {
     testOptions.unitTests.isIncludeAndroidResources = true
 }
 
+kapt { arguments { arg("room.schemaLocation", "$projectDir/schemas") } }
+
 dependencies {
     implementation(libs.androidx.core)
     implementation(libs.androidx.activity.compose)
