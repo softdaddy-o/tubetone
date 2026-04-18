@@ -41,6 +41,10 @@ class ExtractionForegroundService : Service() {
         try {
             updateState(ExtractionState.FetchingMetadata(videoId))
             val meta = NewPipeExtractorService(OkHttpClient()).fetch(videoId)
+            if (meta.durationMs > 30 * 60 * 1000) {
+                updateState(ExtractionState.Failed(FailureReason.TOO_LONG, null))
+                return
+            }
             val audioFile = File(cacheDir, "extracts/$videoId.m4a").apply { parentFile?.mkdirs() }
             AudioDownloader(OkHttpClient()).download(meta.audioStreamUrl, audioFile).collect { progress ->
                 updateState(ExtractionState.Downloading(meta, progress))

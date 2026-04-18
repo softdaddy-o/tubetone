@@ -106,6 +106,8 @@ fun AppRoot(vm: ExtractionViewModel) {
     }
 }
 
+private enum class DupAction { Overwrite, NewFile, Cancel }
+
 @Composable
 private fun HomeTab(
     vm: ExtractionViewModel,
@@ -113,6 +115,25 @@ private fun HomeTab(
     scope: kotlinx.coroutines.CoroutineScope
 ) {
     val state by vm.state.collectAsState()
+    var pendingDup by remember { mutableStateOf<((DupAction) -> Unit)?>(null) }
+
+    pendingDup?.let { resume ->
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { resume(DupAction.Cancel); pendingDup = null },
+            title = { Text("중복된 벨소리") },
+            text = { Text("같은 영상의 같은 구간이 이미 저장되어 있습니다.") },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = { resume(DupAction.Overwrite); pendingDup = null }) { Text("덮어쓰기") }
+            },
+            dismissButton = {
+                androidx.compose.foundation.layout.Row {
+                    androidx.compose.material3.TextButton(onClick = { resume(DupAction.NewFile); pendingDup = null }) { Text("새 파일") }
+                    androidx.compose.material3.TextButton(onClick = { resume(DupAction.Cancel); pendingDup = null }) { Text("취소") }
+                }
+            }
+        )
+    }
+
     val s = state
     when (s) {
         is ExtractionState.Ready -> {
@@ -124,6 +145,19 @@ private fun HomeTab(
             TrimScreen(vm = trimVm, onSaveRequested = { title, applyDefault ->
                 scope.launch {
                     val st = trimVm.state.value
+                    val dao = TubeToneDatabase.get(ctx).ringtoneDao()
+                    val dup = dao.findDuplicate(st.metadata.videoId, st.startMs, st.endMs)
+                    if (dup != null) {
+                        val action = kotlinx.coroutines.suspendCancellableCoroutine<DupAction> { cont ->
+                            pendingDup = { a -> if (cont.isActive) cont.resumeWith(Result.success(a)) }
+                            cont.invokeOnCancellation { pendingDup = null }
+                        }
+                        when (action) {
+                            DupAction.Cancel -> return@launch
+                            DupAction.Overwrite -> dao.delete(dup.id)
+                            DupAction.NewFile -> { /* proceed */ }
+                        }
+                    }
                     val output = File(ctx.cacheDir, "trimmed/${UUID.randomUUID()}.m4a").apply { parentFile?.mkdirs() }
                     MediaTrimmer.trim(TrimParams(
                         inputPath = st.audioFile.absolutePath,
@@ -149,7 +183,7 @@ private fun HomeTab(
                         createdAt = System.currentTimeMillis(),
                         lastAppliedAt = if (applyDefault && applier.canWriteSettings()) System.currentTimeMillis() else null
                     )
-                    RingtoneRepository(TubeToneDatabase.get(ctx).ringtoneDao()).save(entity)
+                    RingtoneRepository(dao).save(entity)
                     if (applyDefault) {
                         if (applier.canWriteSettings()) applier.setAsDefaultRingtone(written.uri)
                         else applier.openWriteSettingsScreen()
