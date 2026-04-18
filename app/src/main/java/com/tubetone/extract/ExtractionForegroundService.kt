@@ -19,6 +19,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import com.tubetone.waveform.WaveformGenerator
 import okhttp3.OkHttpClient
 import java.io.File
 import java.util.concurrent.atomic.AtomicReference
@@ -45,8 +46,9 @@ class ExtractionForegroundService : Service() {
                 updateState(ExtractionState.Downloading(meta, progress))
                 notificationManager().notify(NOTI_ID, buildNotification(meta.title, progress))
             }
-            // Waveform generation + Ready state happens in Milestone 3.
             updateState(ExtractionState.AnalyzingWaveform(meta))
+            val wave = WaveformGenerator().generate(audioFile, targetBuckets = 512)
+            updateState(ExtractionState.Ready(meta, audioFile, wave))
         } catch (c: CancellationException) {
             updateState(ExtractionState.Failed(FailureReason.CANCELLED, c))
         } catch (t: Throwable) {
