@@ -192,7 +192,19 @@ private fun HomeTab(
             })
         }
         ExtractionState.Idle -> HomeScreen()
-        else -> ExtractingScreen(state = s, onCancel = vm::cancel)
+        else -> ExtractingScreen(
+            state = s,
+            onCancel = vm::cancel,
+            onRetry = {
+                val vid = when (val cur = s) {
+                    is ExtractionState.FetchingMetadata -> cur.videoId
+                    is ExtractionState.Downloading -> cur.metadata.videoId
+                    is ExtractionState.AnalyzingWaveform -> cur.metadata.videoId
+                    else -> null
+                }
+                if (vid != null) ExtractionForegroundService.start(ctx, vid)
+            }
+        )
     }
 }
 
