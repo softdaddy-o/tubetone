@@ -17,7 +17,9 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -27,7 +29,7 @@ import com.tubetone.waveform.WaveformCanvas
 @Composable
 fun TrimScreen(
     vm: TrimViewModel,
-    onSaveRequested: () -> Unit
+    onSaveRequested: (title: String, applyAsDefault: Boolean) -> Unit
 ) {
     val state by vm.state.collectAsState()
     val ctx = LocalContext.current
@@ -39,10 +41,11 @@ fun TrimScreen(
     LaunchedEffect(state.selection) {
         preview.updateRange(state.startMs, state.endMs, state.audioFile)
     }
+    var showSheet by remember { mutableStateOf(false) }
 
     Scaffold(
         bottomBar = {
-            Button(onClick = onSaveRequested, modifier = Modifier.fillMaxWidth().padding(16.dp)) {
+            Button(onClick = { showSheet = true }, modifier = Modifier.fillMaxWidth().padding(16.dp)) {
                 Text("벨소리로 설정 (${state.segmentMs / 1000}s)")
             }
         }
@@ -66,6 +69,16 @@ fun TrimScreen(
                 FilterChip(selected = state.loopPreview, onClick = vm::toggleLoop, label = { Text("반복") })
             }
         }
+    }
+    if (showSheet) {
+        SaveConfirmSheet(
+            defaultTitle = state.metadata.title,
+            onDismiss = { showSheet = false },
+            onConfirm = { title, applyDefault ->
+                showSheet = false
+                onSaveRequested(title, applyDefault)
+            }
+        )
     }
 }
 
