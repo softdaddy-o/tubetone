@@ -1,5 +1,7 @@
 package com.tubetone.core
 
+import android.app.Application
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -12,22 +14,25 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.ViewModel
+import androidx.lifecycle.AndroidViewModel
 import com.tubetone.extract.ExtractingScreen
+import com.tubetone.extract.ExtractionForegroundService
 import com.tubetone.extract.ExtractionState
-import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 
-class ExtractionViewModel : ViewModel() {
-    val state = MutableStateFlow<ExtractionState>(ExtractionState.Idle)
-    fun cancel() { /* Milestone 2 fills this */ }
+class ExtractionViewModel(app: Application) : AndroidViewModel(app) {
+    val state: StateFlow<ExtractionState> = ExtractionForegroundService.state
+    fun cancel() {
+        getApplication<Application>().stopService(
+            Intent(getApplication(), ExtractionForegroundService::class.java)
+        )
+    }
 }
 
 class MainActivity : ComponentActivity() {
     private val vm: ExtractionViewModel by viewModels()
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val videoId = intent?.getStringExtra("videoId")
-        if (videoId != null) vm.state.value = ExtractionState.FetchingMetadata(videoId)
         setContent {
             val state by vm.state.collectAsState()
             when (state) {
