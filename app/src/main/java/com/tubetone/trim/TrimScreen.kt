@@ -33,8 +33,15 @@ import kotlinx.coroutines.launch
 
 /** Result the save handler reports back so TrimScreen can show a Snackbar. */
 sealed class SaveResult {
-    data class Success(val slot: RingtoneSlot, val appliedAsDefault: Boolean) : SaveResult()
+    data class Success(
+        val slot: RingtoneSlot,
+        val appliedAsDefault: Boolean,
+        /** Optional inline warning appended to the success message. */
+        val warning: String? = null
+    ) : SaveResult()
     data class Error(val message: String) : SaveResult()
+    /** User bailed out (e.g. cancelled the duplicate dialog). No snackbar. */
+    object Cancelled : SaveResult()
 }
 
 @Composable
@@ -93,13 +100,16 @@ fun TrimScreen(
                 showSheet = false
                 scope.launch {
                     val result = onSaveRequested(title, slot, applyDefault)
-                    val message = when (result) {
-                        is SaveResult.Success ->
-                            if (result.appliedAsDefault) "✓ ${result.slot.koreanLabel}(으)로 설정되었습니다"
+                    val message: String? = when (result) {
+                        is SaveResult.Success -> {
+                            val base = if (result.appliedAsDefault) "✓ ${result.slot.koreanLabel}(으)로 설정되었습니다"
                             else "✓ ${result.slot.koreanLabel} 저장 완료"
+                            if (result.warning != null) "$base · ${result.warning}" else base
+                        }
                         is SaveResult.Error -> "저장 실패: ${result.message}"
+                        SaveResult.Cancelled -> null
                     }
-                    snackbarHostState.showSnackbar(message)
+                    if (message != null) snackbarHostState.showSnackbar(message)
                 }
             }
         )

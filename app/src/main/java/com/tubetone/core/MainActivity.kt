@@ -151,7 +151,7 @@ private fun HomeTab(
                             cont.invokeOnCancellation { pendingDup = null }
                         }
                         when (action) {
-                            DupAction.Cancel -> return@TrimScreen SaveResult.Error("취소되었습니다")
+                            DupAction.Cancel -> return@TrimScreen SaveResult.Cancelled
                             DupAction.Overwrite -> dao.delete(dup.id)
                             DupAction.NewFile -> { /* proceed */ }
                         }
@@ -184,14 +184,16 @@ private fun HomeTab(
                         lastAppliedAt = if (appliedNow) System.currentTimeMillis() else null
                     )
                     RingtoneRepository(dao).save(entity)
+                    var permissionWarning: String? = null
                     if (applyDefault) {
-                        if (canWrite) applier.setAsDefault(written.uri, slot)
-                        else {
+                        if (canWrite) {
+                            applier.setAsDefault(written.uri, slot)
+                        } else {
                             applier.openWriteSettingsScreen()
-                            return@TrimScreen SaveResult.Error("설정 쓰기 권한을 허용해 주세요")
+                            permissionWarning = "권한을 허용하면 즉시 적용됩니다"
                         }
                     }
-                    SaveResult.Success(slot, appliedAsDefault = appliedNow)
+                    SaveResult.Success(slot, appliedAsDefault = appliedNow, warning = permissionWarning)
                 } catch (t: Throwable) {
                     SaveResult.Error(t.message ?: t::class.simpleName ?: "알 수 없는 오류")
                 }
