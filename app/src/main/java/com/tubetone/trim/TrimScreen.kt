@@ -27,19 +27,20 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.tubetone.ringtone.RingtoneSlot
 import com.tubetone.waveform.WaveformCanvas
 import kotlinx.coroutines.launch
 
 /** Result the save handler reports back so TrimScreen can show a Snackbar. */
 sealed class SaveResult {
-    data class Success(val appliedAsDefault: Boolean) : SaveResult()
+    data class Success(val slot: RingtoneSlot, val appliedAsDefault: Boolean) : SaveResult()
     data class Error(val message: String) : SaveResult()
 }
 
 @Composable
 fun TrimScreen(
     vm: TrimViewModel,
-    onSaveRequested: suspend (title: String, applyAsDefault: Boolean) -> SaveResult
+    onSaveRequested: suspend (title: String, slot: RingtoneSlot, applyAsDefault: Boolean) -> SaveResult
 ) {
     val state by vm.state.collectAsState()
     val ctx = LocalContext.current
@@ -88,14 +89,14 @@ fun TrimScreen(
         SaveConfirmSheet(
             defaultTitle = state.metadata.title,
             onDismiss = { showSheet = false },
-            onConfirm = { title, applyDefault ->
+            onConfirm = { title, slot, applyDefault ->
                 showSheet = false
                 scope.launch {
-                    val result = onSaveRequested(title, applyDefault)
+                    val result = onSaveRequested(title, slot, applyDefault)
                     val message = when (result) {
                         is SaveResult.Success ->
-                            if (result.appliedAsDefault) "✓ 기본 벨소리로 설정되었습니다"
-                            else "✓ 저장 완료"
+                            if (result.appliedAsDefault) "✓ ${result.slot.koreanLabel}(으)로 설정되었습니다"
+                            else "✓ ${result.slot.koreanLabel} 저장 완료"
                         is SaveResult.Error -> "저장 실패: ${result.message}"
                     }
                     snackbarHostState.showSnackbar(message)

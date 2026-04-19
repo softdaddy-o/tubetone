@@ -12,6 +12,9 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -21,28 +24,53 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.tubetone.ringtone.RingtoneSlot
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SaveConfirmSheet(
     defaultTitle: String,
     onDismiss: () -> Unit,
-    onConfirm: (title: String, applyAsDefault: Boolean) -> Unit
+    onConfirm: (title: String, slot: RingtoneSlot, applyAsDefault: Boolean) -> Unit
 ) {
     var title by remember { mutableStateOf(defaultTitle.take(30)) }
+    var slot by remember { mutableStateOf(RingtoneSlot.Ringtone) }
     var applyDefault by remember { mutableStateOf(true) }
+    val slots = remember { RingtoneSlot.values().toList() }
+
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(Modifier.padding(24.dp)) {
             Text("벨소리 저장", style = MaterialTheme.typography.titleMedium)
             Spacer(Modifier.height(12.dp))
-            OutlinedTextField(value = title, onValueChange = { title = it.take(60) }, label = { Text("파일명") }, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(
+                value = title,
+                onValueChange = { title = it.take(60) },
+                label = { Text("파일명") },
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(Modifier.height(16.dp))
+            Text("적용할 슬롯", style = MaterialTheme.typography.labelLarge)
+            Spacer(Modifier.height(6.dp))
+            SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                slots.forEachIndexed { index, s ->
+                    SegmentedButton(
+                        selected = slot == s,
+                        onClick = { slot = s },
+                        shape = SegmentedButtonDefaults.itemShape(index = index, count = slots.size),
+                        label = { Text(s.koreanLabel) }
+                    )
+                }
+            }
             Spacer(Modifier.height(12.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Checkbox(checked = applyDefault, onCheckedChange = { applyDefault = it })
-                Text("기본 벨소리로 즉시 적용")
+                Text("${slot.koreanLabel}(으)로 즉시 적용")
             }
             Spacer(Modifier.height(16.dp))
-            Button(onClick = { onConfirm(title, applyDefault) }, modifier = Modifier.fillMaxWidth()) { Text("저장") }
+            Button(
+                onClick = { onConfirm(title, slot, applyDefault) },
+                modifier = Modifier.fillMaxWidth()
+            ) { Text("저장") }
         }
     }
 }

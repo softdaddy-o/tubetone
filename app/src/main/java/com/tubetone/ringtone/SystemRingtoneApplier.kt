@@ -17,7 +17,12 @@ class SystemRingtoneApplier(private val context: Context) {
         })
     }
 
+    /** Kept for backwards compatibility with LibraryScreen. */
     fun setAsDefaultRingtone(uri: Uri) {
-        RingtoneManager.setActualDefaultRingtoneUri(context, RingtoneManager.TYPE_RINGTONE, uri)
+        setAsDefault(uri, RingtoneSlot.Ringtone)
+    }
+
+    fun setAsDefault(uri: Uri, slot: RingtoneSlot) {
+        RingtoneManager.setActualDefaultRingtoneUri(context, slot.ringtoneManagerType, uri)
     }
 }

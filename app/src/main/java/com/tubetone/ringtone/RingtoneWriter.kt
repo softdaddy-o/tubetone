@@ -12,17 +12,18 @@ import java.io.File
 data class WrittenRingtone(val uri: Uri, val filePath: String)
 
 class RingtoneWriter(private val context: Context) {
-    suspend fun writeAsRingtone(source: File, displayName: String): WrittenRingtone = withContext(Dispatchers.IO) {
+    suspend fun writeAsRingtone(
+        source: File,
+        displayName: String,
+        slot: RingtoneSlot = RingtoneSlot.Ringtone
+    ): WrittenRingtone = withContext(Dispatchers.IO) {
         val safeName = displayName.replace(Regex("""[\\/:*?"<>|]"""), "_").take(80)
         val values = ContentValues().apply {
             put(MediaStore.MediaColumns.DISPLAY_NAME, "TubeTone_$safeName.m4a")
             put(MediaStore.MediaColumns.MIME_TYPE, "audio/mp4")
-            put(MediaStore.Audio.Media.IS_RINGTONE, 1)
-            put(MediaStore.Audio.Media.IS_NOTIFICATION, 0)
-            put(MediaStore.Audio.Media.IS_ALARM, 0)
-            put(MediaStore.Audio.Media.IS_MUSIC, 0)
+            slot.applyMediaStoreFlags(this)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                put(MediaStore.MediaColumns.RELATIVE_PATH, android.os.Environment.DIRECTORY_RINGTONES)
+                put(MediaStore.MediaColumns.RELATIVE_PATH, slot.relativePath)
                 put(MediaStore.MediaColumns.IS_PENDING, 1)
             }
         }

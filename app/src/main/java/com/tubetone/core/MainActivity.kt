@@ -38,6 +38,7 @@ import com.tubetone.library.LibraryViewModel
 import com.tubetone.library.RingtoneRepository
 import com.tubetone.library.db.RingtoneEntity
 import com.tubetone.library.db.TubeToneDatabase
+import com.tubetone.ringtone.RingtoneSlot
 import com.tubetone.ringtone.RingtoneWriter
 import com.tubetone.ringtone.SystemRingtoneApplier
 import com.tubetone.share.YoutubeUrlParser
@@ -139,7 +140,7 @@ private fun HomeTab(
                     TrimUiState(metadata = s.metadata, audioFile = s.audioFile, samples = s.waveform)
                 ).also { it.initialThirtySecond() }
             }
-            TrimScreen(vm = trimVm, onSaveRequested = { title, applyDefault ->
+            TrimScreen(vm = trimVm, onSaveRequested = { title, slot, applyDefault ->
                 try {
                     val st = trimVm.state.value
                     val dao = TubeToneDatabase.get(ctx).ringtoneDao()
@@ -163,7 +164,7 @@ private fun HomeTab(
                         endMs = st.endMs,
                         fade = st.fadeEnabled
                     ))
-                    val written = RingtoneWriter(ctx).writeAsRingtone(output, title)
+                    val written = RingtoneWriter(ctx).writeAsRingtone(output, title, slot)
                     val applier = SystemRingtoneApplier(ctx)
                     val canWrite = applier.canWriteSettings()
                     val appliedNow = applyDefault && canWrite
@@ -184,13 +185,13 @@ private fun HomeTab(
                     )
                     RingtoneRepository(dao).save(entity)
                     if (applyDefault) {
-                        if (canWrite) applier.setAsDefaultRingtone(written.uri)
+                        if (canWrite) applier.setAsDefault(written.uri, slot)
                         else {
                             applier.openWriteSettingsScreen()
                             return@TrimScreen SaveResult.Error("설정 쓰기 권한을 허용해 주세요")
                         }
                     }
-                    SaveResult.Success(appliedAsDefault = appliedNow)
+                    SaveResult.Success(slot, appliedAsDefault = appliedNow)
                 } catch (t: Throwable) {
                     SaveResult.Error(t.message ?: t::class.simpleName ?: "알 수 없는 오류")
                 }
