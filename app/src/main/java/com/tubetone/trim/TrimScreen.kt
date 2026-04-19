@@ -58,7 +58,8 @@ fun TrimScreen(
             WaveformCanvas(
                 samples = state.samples,
                 selection = state.selection,
-                onSelectionChange = vm::updateSelection
+                onSelectionChange = vm::updateSelection,
+                totalDurationMs = state.metadata.durationMs
             )
             Spacer(Modifier.height(16.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {

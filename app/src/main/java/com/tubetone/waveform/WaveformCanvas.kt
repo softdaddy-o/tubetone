@@ -8,15 +8,45 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 
 data class WaveformSelection(val startFrac: Float, val endFrac: Float) {
     init { require(startFrac in 0f..1f && endFrac in 0f..1f && startFrac < endFrac) }
+
+    /**
+     * Return a new selection with the start handle moved to [newFrac],
+     * clamped so that the window stays within [0, 1], keeps a minimum gap of
+     * [minGapFrac], and never exceeds [maxSpanFrac] in span. The end handle
+     * may be pushed right if [newFrac] would otherwise violate the min-gap.
+     */
+    fun withStart(newFrac: Float, minGapFrac: Float, maxSpanFrac: Float): WaveformSelection {
+        val clampedStart = newFrac.coerceIn(0f, 1f - minGapFrac)
+        val minEnd = clampedStart + minGapFrac
+        val maxEnd = (clampedStart + maxSpanFrac).coerceAtMost(1f)
+        val newEnd = endFrac.coerceIn(minEnd, maxEnd)
+        return WaveformSelection(clampedStart, newEnd)
+    }
+
+    /**
+     * Return a new selection with the end handle moved to [newFrac],
+     * clamped so that the window stays within [0, 1], keeps a minimum gap of
+     * [minGapFrac], and never exceeds [maxSpanFrac] in span. The start handle
+     * may be pushed left if [newFrac] would otherwise violate the span cap.
+     */
+    fun withEnd(newFrac: Float, minGapFrac: Float, maxSpanFrac: Float): WaveformSelection {
+        val clampedEnd = newFrac.coerceIn(minGapFrac, 1f)
+        val maxStart = clampedEnd - minGapFrac
+        val minStart = (clampedEnd - maxSpanFrac).coerceAtLeast(0f)
+        val newStart = startFrac.coerceIn(minStart, maxStart)
+        return WaveformSelection(newStart, clampedEnd)
+    }
 }
 
 @Composable
@@ -25,30 +55,51 @@ fun WaveformCanvas(
     selection: WaveformSelection,
     onSelectionChange: (WaveformSelection) -> Unit,
     modifier: Modifier = Modifier,
+    totalDurationMs: Long = 0L,
+    minSegmentMs: Long = 1_000L,
+    maxSegmentMs: Long = 30_000L,
     barColor: Color = Color(0xFF546E7A),
     selectedColor: Color = Color(0xFF1976D2),
     handleColor: Color = Color(0xFFFFA000)
 ) {
+    val density = LocalDensity.current
+    val hitZonePx = remember(density) { with(density) { 24.dp.toPx() } }
+    val selectionState = rememberUpdatedState(selection)
+    val minGapFrac = if (totalDurationMs > 0) (minSegmentMs.toFloat() / totalDurationMs).coerceIn(0.001f, 0.5f) else 0.01f
+    val maxSpanFrac = if (totalDurationMs > 0) (maxSegmentMs.toFloat() / totalDurationMs).coerceIn(minGapFrac, 1f) else 1f
     var draggingHandle by remember { mutableStateOf<Handle?>(null) }
+
     Canvas(
         modifier = modifier
             .fillMaxWidth()
             .height(160.dp)
-            .pointerInput(samples) {
+            .pointerInput(Unit) {
                 detectDragGestures(
                     onDragStart = { pos ->
-                        val frac = (pos.x / size.width).coerceIn(0f, 1f)
-                        draggingHandle = if (kotlin.math.abs(frac - selection.startFrac) <
-                            kotlin.math.abs(frac - selection.endFrac)) Handle.Start else Handle.End
+                        val current = selectionState.value
+                        val startPx = current.startFrac * size.width
+                        val endPx = current.endFrac * size.width
+                        val dStart = kotlin.math.abs(pos.x - startPx)
+                        val dEnd = kotlin.math.abs(pos.x - endPx)
+                        // Prefer the handle whose hit zone was struck. If both are in range,
+                        // pick the nearer one. If neither, fall back to nearest.
+                        draggingHandle = when {
+                            dStart <= hitZonePx && dEnd <= hitZonePx -> if (dStart <= dEnd) Handle.Start else Handle.End
+                            dStart <= hitZonePx -> Handle.Start
+                            dEnd <= hitZonePx -> Handle.End
+                            dStart <= dEnd -> Handle.Start
+                            else -> Handle.End
+                        }
                     },
                     onDrag = { change, _ ->
                         val frac = (change.position.x / size.width).coerceIn(0f, 1f)
+                        val current = selectionState.value
                         val next = when (draggingHandle) {
-                            Handle.Start -> selection.copy(startFrac = frac.coerceAtMost(selection.endFrac - 0.01f))
-                            Handle.End -> selection.copy(endFrac = frac.coerceAtLeast(selection.startFrac + 0.01f))
-                            null -> selection
+                            Handle.Start -> current.withStart(frac, minGapFrac, maxSpanFrac)
+                            Handle.End -> current.withEnd(frac, minGapFrac, maxSpanFrac)
+                            null -> current
                         }
-                        onSelectionChange(next)
+                        if (next != current) onSelectionChange(next)
                     },
                     onDragEnd = { draggingHandle = null },
                     onDragCancel = { draggingHandle = null }
