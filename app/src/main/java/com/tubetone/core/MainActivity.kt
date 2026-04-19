@@ -197,7 +197,9 @@ private fun HomeTab(
                 }
             })
         }
-        ExtractionState.Idle -> HomeScreen()
+        ExtractionState.Idle -> HomeEntryScreen(onStart = { videoId ->
+            ExtractionForegroundService.start(ctx, videoId)
+        })
         else -> ExtractingScreen(
             state = s,
             onCancel = vm::cancel,
@@ -214,9 +216,3 @@ private fun HomeTab(
     }
 }
 
-@Composable
-fun HomeScreen() {
-    Scaffold { padding ->
-        Text("TubeTone", modifier = Modifier.padding(padding.calculateTopPadding()).padding(16.dp))
-    }
-}

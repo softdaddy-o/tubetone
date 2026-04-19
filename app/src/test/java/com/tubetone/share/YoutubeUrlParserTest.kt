@@ -27,4 +27,14 @@ class YoutubeUrlParserTest {
         val text = "Check this out https://youtu.be/dQw4w9WgXcQ amazing"
         assertEquals("dQw4w9WgXcQ", YoutubeUrlParser.extractVideoId(text))
     }
+    @Test fun `extracts id from embed url`() {
+        assertEquals("dQw4w9WgXcQ", YoutubeUrlParser.extractVideoId("https://www.youtube.com/embed/dQw4w9WgXcQ"))
+    }
+    @Test fun `returns null for blank string`() {
+        assertNull(YoutubeUrlParser.extractVideoId(""))
+        assertNull(YoutubeUrlParser.extractVideoId("   "))
+    }
+    @Test fun `returns null for null input`() {
+        assertNull(YoutubeUrlParser.extractVideoId(null))
+    }
 }
