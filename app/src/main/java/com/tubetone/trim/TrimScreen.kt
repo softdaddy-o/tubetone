@@ -11,6 +11,8 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -19,17 +21,25 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.tubetone.waveform.WaveformCanvas
+import kotlinx.coroutines.launch
+
+/** Result the save handler reports back so TrimScreen can show a Snackbar. */
+sealed class SaveResult {
+    data class Success(val appliedAsDefault: Boolean) : SaveResult()
+    data class Error(val message: String) : SaveResult()
+}
 
 @Composable
 fun TrimScreen(
     vm: TrimViewModel,
-    onSaveRequested: (title: String, applyAsDefault: Boolean) -> Unit
+    onSaveRequested: suspend (title: String, applyAsDefault: Boolean) -> SaveResult
 ) {
     val state by vm.state.collectAsState()
     val ctx = LocalContext.current
@@ -42,8 +52,11 @@ fun TrimScreen(
         preview.updateRange(state.startMs, state.endMs, state.audioFile)
     }
     var showSheet by remember { mutableStateOf(false) }
+    val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         bottomBar = {
             Button(onClick = { showSheet = true }, modifier = Modifier.fillMaxWidth().padding(16.dp)) {
                 Text("벨소리로 설정 (${state.segmentMs / 1000}s)")
@@ -77,7 +90,16 @@ fun TrimScreen(
             onDismiss = { showSheet = false },
             onConfirm = { title, applyDefault ->
                 showSheet = false
-                onSaveRequested(title, applyDefault)
+                scope.launch {
+                    val result = onSaveRequested(title, applyDefault)
+                    val message = when (result) {
+                        is SaveResult.Success ->
+                            if (result.appliedAsDefault) "✓ 기본 벨소리로 설정되었습니다"
+                            else "✓ 저장 완료"
+                        is SaveResult.Error -> "저장 실패: ${result.message}"
+                    }
+                    snackbarHostState.showSnackbar(message)
+                }
             }
         )
     }

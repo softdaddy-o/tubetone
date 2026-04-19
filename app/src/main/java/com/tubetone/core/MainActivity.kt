@@ -22,7 +22,6 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -43,12 +42,12 @@ import com.tubetone.ringtone.RingtoneWriter
 import com.tubetone.ringtone.SystemRingtoneApplier
 import com.tubetone.share.YoutubeUrlParser
 import com.tubetone.trim.MediaTrimmer
+import com.tubetone.trim.SaveResult
 import com.tubetone.trim.TrimParams
 import com.tubetone.trim.TrimScreen
 import com.tubetone.trim.TrimUiState
 import com.tubetone.trim.TrimViewModel
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.launch
 import java.io.File
 import java.util.UUID
 
@@ -72,7 +71,6 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun AppRoot(vm: ExtractionViewModel) {
     val ctx = LocalContext.current
-    val scope = rememberCoroutineScope()
     var tab by remember { mutableStateOf(0) }
 
     Scaffold(bottomBar = {
@@ -83,7 +81,7 @@ fun AppRoot(vm: ExtractionViewModel) {
     }) { padding ->
         Box(Modifier.padding(padding)) {
             when (tab) {
-                0 -> HomeTab(vm, ctx, scope)
+                0 -> HomeTab(vm, ctx)
                 1 -> {
                     val libVm: LibraryViewModel = viewModel(factory = viewModelFactory {
                         initializer { LibraryViewModel(RingtoneRepository(TubeToneDatabase.get(ctx).ringtoneDao())) }
@@ -111,8 +109,7 @@ private enum class DupAction { Overwrite, NewFile, Cancel }
 @Composable
 private fun HomeTab(
     vm: ExtractionViewModel,
-    ctx: android.content.Context,
-    scope: kotlinx.coroutines.CoroutineScope
+    ctx: android.content.Context
 ) {
     val state by vm.state.collectAsState()
     var pendingDup by remember { mutableStateOf<((DupAction) -> Unit)?>(null) }
@@ -143,7 +140,7 @@ private fun HomeTab(
                 ).also { it.initialThirtySecond() }
             }
             TrimScreen(vm = trimVm, onSaveRequested = { title, applyDefault ->
-                scope.launch {
+                try {
                     val st = trimVm.state.value
                     val dao = TubeToneDatabase.get(ctx).ringtoneDao()
                     val dup = dao.findDuplicate(st.metadata.videoId, st.startMs, st.endMs)
@@ -153,7 +150,7 @@ private fun HomeTab(
                             cont.invokeOnCancellation { pendingDup = null }
                         }
                         when (action) {
-                            DupAction.Cancel -> return@launch
+                            DupAction.Cancel -> return@TrimScreen SaveResult.Error("취소되었습니다")
                             DupAction.Overwrite -> dao.delete(dup.id)
                             DupAction.NewFile -> { /* proceed */ }
                         }
@@ -168,6 +165,8 @@ private fun HomeTab(
                     ))
                     val written = RingtoneWriter(ctx).writeAsRingtone(output, title)
                     val applier = SystemRingtoneApplier(ctx)
+                    val canWrite = applier.canWriteSettings()
+                    val appliedNow = applyDefault && canWrite
                     val entity = RingtoneEntity(
                         id = UUID.randomUUID().toString(),
                         title = title,
@@ -181,13 +180,19 @@ private fun HomeTab(
                         outputFilePath = written.filePath,
                         originalCachePath = st.audioFile.absolutePath,
                         createdAt = System.currentTimeMillis(),
-                        lastAppliedAt = if (applyDefault && applier.canWriteSettings()) System.currentTimeMillis() else null
+                        lastAppliedAt = if (appliedNow) System.currentTimeMillis() else null
                     )
                     RingtoneRepository(dao).save(entity)
                     if (applyDefault) {
-                        if (applier.canWriteSettings()) applier.setAsDefaultRingtone(written.uri)
-                        else applier.openWriteSettingsScreen()
+                        if (canWrite) applier.setAsDefaultRingtone(written.uri)
+                        else {
+                            applier.openWriteSettingsScreen()
+                            return@TrimScreen SaveResult.Error("설정 쓰기 권한을 허용해 주세요")
+                        }
                     }
+                    SaveResult.Success(appliedAsDefault = appliedNow)
+                } catch (t: Throwable) {
+                    SaveResult.Error(t.message ?: t::class.simpleName ?: "알 수 없는 오류")
                 }
             })
         }
