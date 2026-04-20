@@ -44,4 +44,17 @@ enum class RingtoneSlot {
         values.put(MediaStore.Audio.Media.IS_ALARM, if (this == Alarm) 1 else 0)
         values.put(MediaStore.Audio.Media.IS_MUSIC, 0)
     }
+
+    companion object {
+        /**
+         * Map a [RingtoneManager] TYPE_* integer back to the enum. Unknown
+         * values fall back to [Ringtone] — v1 rows migrated without a slot
+         * (schema v1) are TYPE_RINGTONE per [Migrations].
+         */
+        fun fromTypeCode(code: Int): RingtoneSlot = when (code) {
+            RingtoneManager.TYPE_NOTIFICATION -> Notification
+            RingtoneManager.TYPE_ALARM -> Alarm
+            else -> Ringtone
+        }
+    }
 }

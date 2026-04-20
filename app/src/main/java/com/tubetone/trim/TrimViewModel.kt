@@ -2,6 +2,7 @@ package com.tubetone.trim
 
 import androidx.lifecycle.ViewModel
 import com.tubetone.extract.VideoMetadata
+import com.tubetone.library.db.RingtoneSource
 import com.tubetone.waveform.WaveformSelection
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -13,13 +14,15 @@ data class TrimUiState(
     val samples: FloatArray,
     val selection: WaveformSelection = WaveformSelection(0f, 0.05f),
     val fadeEnabled: Boolean = true,
-    val loopPreview: Boolean = true
+    val loopPreview: Boolean = true,
+    /** Where the audio came from — drives source pill and library `source` column. */
+    val source: RingtoneSource = RingtoneSource.YOUTUBE
 ) {
     val startMs: Long get() = (selection.startFrac * metadata.durationMs).toLong()
     val endMs: Long get() = (selection.endFrac * metadata.durationMs).toLong()
     val segmentMs: Long get() = endMs - startMs
-    override fun equals(other: Any?) = other is TrimUiState && metadata == other.metadata && selection == other.selection && fadeEnabled == other.fadeEnabled
-    override fun hashCode(): Int = listOf(metadata, selection, fadeEnabled).hashCode()
+    override fun equals(other: Any?) = other is TrimUiState && metadata == other.metadata && selection == other.selection && fadeEnabled == other.fadeEnabled && source == other.source
+    override fun hashCode(): Int = listOf(metadata, selection, fadeEnabled, source).hashCode()
 }
 
 class TrimViewModel(initial: TrimUiState) : ViewModel() {

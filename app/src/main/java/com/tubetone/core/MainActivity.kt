@@ -94,7 +94,11 @@ fun AppRoot(vm: ExtractionViewModel) {
                         onApply = { item ->
                             val applier = SystemRingtoneApplier(ctx)
                             if (applier.canWriteSettings()) {
-                                applier.setAsDefaultRingtone(Uri.parse(item.outputUri))
+                                // v2: honour the slot the ringtone was saved into,
+                                // not a hardcoded TYPE_RINGTONE. Fixes the v0.1.1
+                                // bug where re-applying an alarm reset it to ringtone.
+                                val slot = RingtoneSlot.fromTypeCode(item.slotType)
+                                applier.setAsDefault(Uri.parse(item.outputUri), slot)
                                 libVm.markApplied(item.id)
                             } else applier.openWriteSettingsScreen()
                         },
@@ -182,7 +186,9 @@ private fun HomeTab(
                         outputFilePath = written.filePath,
                         originalCachePath = st.audioFile.absolutePath,
                         createdAt = System.currentTimeMillis(),
-                        lastAppliedAt = if (appliedNow) System.currentTimeMillis() else null
+                        lastAppliedAt = if (appliedNow) System.currentTimeMillis() else null,
+                        slotType = slot.ringtoneManagerType,
+                        source = st.source.name
                     )
                     RingtoneRepository(dao).save(entity)
                     var permissionWarning: String? = null
