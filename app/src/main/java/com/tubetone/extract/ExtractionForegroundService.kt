@@ -31,10 +31,36 @@ class ExtractionForegroundService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        val videoId = intent?.getStringExtra(EXTRA_VIDEO_ID) ?: run { stopSelf(); return START_NOT_STICKY }
+        val localUri = intent?.getStringExtra(EXTRA_LOCAL_URI)
+        val videoId = intent?.getStringExtra(EXTRA_VIDEO_ID)
+        if (localUri != null) {
+            startForeground(NOTI_ID, buildNotification("파일 불러오는 중...", null))
+            scope.launch { runLocalIngest(android.net.Uri.parse(localUri)) }
+            return START_STICKY
+        }
+        if (videoId == null) { stopSelf(); return START_NOT_STICKY }
         startForeground(NOTI_ID, buildNotification("정보 가져오는 중...", null))
         scope.launch { runExtraction(videoId) }
         return START_STICKY
+    }
+
+    private suspend fun runLocalIngest(uri: android.net.Uri) {
+        try {
+            updateState(ExtractionState.FetchingMetadata("local"))
+            val ingested = LocalFileIngestor(this).ingest(uri)
+            updateState(ExtractionState.AnalyzingWaveform(ingested.metadata))
+            val wave = WaveformGenerator().generate(ingested.file, targetBuckets = 512)
+            updateState(ExtractionState.Ready(ingested.metadata, ingested.file, wave, source = ExtractionSource.LOCAL))
+        } catch (c: CancellationException) {
+            updateState(ExtractionState.Failed(FailureReason.CANCELLED, c))
+        } catch (t: LocalFileIngestor.UnsupportedTypeException) {
+            updateState(ExtractionState.Failed(FailureReason.EXTRACTOR_BROKEN, t))
+        } catch (t: Throwable) {
+            updateState(ExtractionState.Failed(FailureReason.UNKNOWN, t))
+        } finally {
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            stopSelf()
+        }
     }
 
     private suspend fun runExtraction(videoId: String) {
@@ -98,6 +124,7 @@ class ExtractionForegroundService : Service() {
         const val CHANNEL_ID = "tubetone.extraction"
         const val NOTI_ID = 1001
         const val EXTRA_VIDEO_ID = "videoId"
+        const val EXTRA_LOCAL_URI = "localUri"
         private val stateRef = AtomicReference<ExtractionState>(ExtractionState.Idle)
         private val _stateFlow = MutableSharedFlow<ExtractionState>(replay = 1, extraBufferCapacity = 64)
         val state: StateFlow<ExtractionState> = _stateFlow.stateIn(
@@ -108,6 +135,14 @@ class ExtractionForegroundService : Service() {
 
         fun start(context: Context, videoId: String) {
             val i = Intent(context, ExtractionForegroundService::class.java).apply { putExtra(EXTRA_VIDEO_ID, videoId) }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) context.startForegroundService(i)
+            else context.startService(i)
+        }
+
+        fun startLocal(context: Context, uri: android.net.Uri) {
+            val i = Intent(context, ExtractionForegroundService::class.java).apply {
+                putExtra(EXTRA_LOCAL_URI, uri.toString())
+            }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) context.startForegroundService(i)
             else context.startService(i)
         }

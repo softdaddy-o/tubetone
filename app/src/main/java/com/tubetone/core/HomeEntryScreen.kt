@@ -2,6 +2,9 @@ package com.tubetone.core
 
 import android.content.ClipboardManager
 import android.content.Context
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -12,6 +15,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -24,18 +28,22 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
-import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.tubetone.share.YoutubeUrlParser
+import com.tubetone.ui.theme.Spacing
 
 /**
  * Landing screen shown when the app is launched without a share intent
- * and the ExtractionState is Idle. Provides a URL input and surfaces a
- * clipboard URL when available.
+ * and the ExtractionState is Idle. Two primary CTAs:
+ *  - paste YouTube URL → existing extraction pipeline.
+ *  - pick a local audio/video file → L1 local path (v0.2.0 MUST).
  */
 @Composable
-fun HomeEntryScreen(onStart: (videoId: String) -> Unit) {
+fun HomeEntryScreen(
+    onStart: (videoId: String) -> Unit,
+    onLocalFile: (Uri) -> Unit = {}
+) {
     val ctx = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     var url by remember { mutableStateOf("") }
@@ -43,8 +51,6 @@ fun HomeEntryScreen(onStart: (videoId: String) -> Unit) {
     var clipboardUrl by remember { mutableStateOf<String?>(null) }
 
     // Re-check the clipboard every time the user returns to this screen.
-    // Reading the clipboard only works while we are focused, so we do it in
-    // ON_RESUME rather than onCreate.
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
@@ -55,21 +61,27 @@ fun HomeEntryScreen(onStart: (videoId: String) -> Unit) {
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
+    // OpenDocument contract with audio+video MIME filter — scoped-storage
+    // friendly, no READ_MEDIA_* permission required.
+    val pickFile = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? -> if (uri != null) onLocalFile(uri) }
+
     Scaffold { padding ->
         Column(
             modifier = Modifier
                 .padding(padding)
-                .padding(24.dp)
+                .padding(Spacing.s24)
                 .fillMaxSize(),
             verticalArrangement = Arrangement.Top
         ) {
             Text("TubeTone", style = MaterialTheme.typography.headlineMedium)
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(Spacing.s8))
             Text(
-                "유튜브 링크를 붙여넣고 벨소리로 만들어 보세요.",
+                "유튜브 링크를 붙여넣거나 기기 파일을 선택해 벨소리를 만들어 보세요.",
                 style = MaterialTheme.typography.bodyMedium
             )
-            Spacer(Modifier.height(24.dp))
+            Spacer(Modifier.height(Spacing.s24))
 
             clipboardUrl?.let { detected ->
                 AssistChip(
@@ -84,7 +96,7 @@ fun HomeEntryScreen(onStart: (videoId: String) -> Unit) {
                         )
                     }
                 )
-                Spacer(Modifier.height(12.dp))
+                Spacer(Modifier.height(Spacing.s12))
             }
 
             OutlinedTextField(
@@ -101,7 +113,7 @@ fun HomeEntryScreen(onStart: (videoId: String) -> Unit) {
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth()
             )
-            Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(Spacing.s16))
             Button(
                 onClick = {
                     val videoId = YoutubeUrlParser.extractVideoId(url)
@@ -113,7 +125,12 @@ fun HomeEntryScreen(onStart: (videoId: String) -> Unit) {
                 },
                 modifier = Modifier.fillMaxWidth(),
                 enabled = url.isNotBlank()
-            ) { Text("작업 시작") }
+            ) { Text("유튜브로 만들기") }
+            Spacer(Modifier.height(Spacing.s12))
+            OutlinedButton(
+                onClick = { pickFile.launch(arrayOf("audio/*", "video/*")) },
+                modifier = Modifier.fillMaxWidth()
+            ) { Text("기기 파일에서 만들기") }
         }
     }
 }

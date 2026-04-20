@@ -32,7 +32,9 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.tubetone.extract.ExtractingScreen
 import com.tubetone.extract.ExtractionForegroundService
+import com.tubetone.extract.ExtractionSource
 import com.tubetone.extract.ExtractionState
+import com.tubetone.library.db.RingtoneSource
 import com.tubetone.library.LibraryScreen
 import com.tubetone.library.LibraryViewModel
 import com.tubetone.library.RingtoneRepository
@@ -142,7 +144,12 @@ private fun HomeTab(
         is ExtractionState.Ready -> {
             val trimVm = remember(s.audioFile) {
                 TrimViewModel(
-                    TrimUiState(metadata = s.metadata, audioFile = s.audioFile, samples = s.waveform)
+                    TrimUiState(
+                        metadata = s.metadata,
+                        audioFile = s.audioFile,
+                        samples = s.waveform,
+                        source = if (s.source == ExtractionSource.LOCAL) RingtoneSource.LOCAL else RingtoneSource.YOUTUBE
+                    )
                 ).also { it.initialThirtySecond() }
             }
             TrimScreen(vm = trimVm, onSaveRequested = { title, slot, applyDefault ->
@@ -176,7 +183,7 @@ private fun HomeTab(
                     val entity = RingtoneEntity(
                         id = UUID.randomUUID().toString(),
                         title = title,
-                        sourceUrl = YoutubeUrlParser.canonicalUrl(st.metadata.videoId),
+                        sourceUrl = if (st.source == RingtoneSource.LOCAL) "" else YoutubeUrlParser.canonicalUrl(st.metadata.videoId),
                         sourceVideoId = st.metadata.videoId,
                         sourceTitle = st.metadata.title,
                         thumbnailUrl = st.metadata.thumbnailUrl,
@@ -206,9 +213,20 @@ private fun HomeTab(
                 }
             })
         }
-        ExtractionState.Idle -> HomeEntryScreen(onStart = { videoId ->
-            ExtractionForegroundService.start(ctx, videoId)
-        })
+        ExtractionState.Idle -> HomeEntryScreen(
+            onStart = { videoId -> ExtractionForegroundService.start(ctx, videoId) },
+            onLocalFile = { uri ->
+                // Persist permission for OpenDocument URIs so the ingestor can
+                // re-read after a process death / service restart.
+                runCatching {
+                    ctx.contentResolver.takePersistableUriPermission(
+                        uri,
+                        android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+                    )
+                }
+                ExtractionForegroundService.startLocal(ctx, uri)
+            }
+        )
         else -> ExtractingScreen(
             state = s,
             onCancel = vm::cancel,
