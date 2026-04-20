@@ -42,6 +42,7 @@ import com.tubetone.ringtone.RingtoneSlot
 import com.tubetone.ringtone.RingtoneWriter
 import com.tubetone.ringtone.SystemRingtoneApplier
 import com.tubetone.share.YoutubeUrlParser
+import com.tubetone.ui.theme.TubeToneTheme
 import com.tubetone.trim.MediaTrimmer
 import com.tubetone.trim.SaveResult
 import com.tubetone.trim.TrimParams
@@ -65,7 +66,7 @@ class MainActivity : ComponentActivity() {
     private val vm: ExtractionViewModel by viewModels()
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent { AppRoot(vm) }
+        setContent { TubeToneTheme { AppRoot(vm) } }
     }
 }
 
