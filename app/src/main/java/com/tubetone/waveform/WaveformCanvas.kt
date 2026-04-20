@@ -14,8 +14,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedback
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.dp
 import com.tubetone.ui.theme.Spacing
 
@@ -67,11 +70,13 @@ fun WaveformCanvas(
     clampedColor: Color = MaterialTheme.colorScheme.tertiary
 ) {
     val density = LocalDensity.current
+    val haptics = LocalHapticFeedback.current
     val hitZonePx = remember(density) { with(density) { 24.dp.toPx() } }
     val selectionState = rememberUpdatedState(selection)
     val minGapFrac = if (totalDurationMs > 0) (minSegmentMs.toFloat() / totalDurationMs).coerceIn(0.001f, 0.5f) else 0.01f
     val maxSpanFrac = if (totalDurationMs > 0) (maxSegmentMs.toFloat() / totalDurationMs).coerceIn(minGapFrac, 1f) else 1f
     var draggingHandle by remember { mutableStateOf<Handle?>(null) }
+    var wasClamped by remember { mutableStateOf(false) }
 
     Canvas(
         modifier = modifier
@@ -94,6 +99,7 @@ fun WaveformCanvas(
                             dStart <= dEnd -> Handle.Start
                             else -> Handle.End
                         }
+                        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                     },
                     onDrag = { change, _ ->
                         val rawFrac = (change.position.x / size.width).coerceIn(0f, 1f)
@@ -106,10 +112,19 @@ fun WaveformCanvas(
                             Handle.End -> current.withEnd(frac, minGapFrac, maxSpanFrac)
                             null -> current
                         }
-                        if (next != current) onSelectionChange(next)
+                        if (next != current) {
+                            onSelectionChange(next)
+                            val span = next.endFrac - next.startFrac
+                            val nowClamped = kotlin.math.abs(span - minGapFrac) < 1e-3f ||
+                                kotlin.math.abs(span - maxSpanFrac) < 1e-3f
+                            if (nowClamped && !wasClamped) {
+                                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                            }
+                            wasClamped = nowClamped
+                        }
                     },
-                    onDragEnd = { draggingHandle = null },
-                    onDragCancel = { draggingHandle = null }
+                    onDragEnd = { draggingHandle = null; wasClamped = false },
+                    onDragCancel = { draggingHandle = null; wasClamped = false }
                 )
             }
     ) {

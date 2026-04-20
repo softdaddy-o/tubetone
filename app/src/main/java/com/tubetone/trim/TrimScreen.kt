@@ -27,7 +27,9 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.dp
 import com.tubetone.ringtone.RingtoneSlot
 import com.tubetone.waveform.WaveformCanvas
@@ -63,6 +65,7 @@ fun TrimScreen(
 ) {
     val state by vm.state.collectAsState()
     val ctx = LocalContext.current
+    val haptics = LocalHapticFeedback.current
     val preview = remember { ExoPreviewController(ctx) }
     DisposableEffect(state.audioFile) {
         preview.load(state.audioFile, state.startMs, state.endMs)
@@ -115,14 +118,20 @@ fun TrimScreen(
                 scope.launch {
                     val result = onSaveRequested(title, slot, applyDefault)
                     when (result) {
-                        is SaveResult.Success -> showSuccessSnackbar(
-                            host = snackbarHostState,
-                            result = result,
-                            onUndo = onUndo,
-                            onPreview = onPreview,
-                            scope = scope
-                        )
-                        is SaveResult.Error -> snackbarHostState.showSnackbar("저장 실패: ${result.message}")
+                        is SaveResult.Success -> {
+                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                            showSuccessSnackbar(
+                                host = snackbarHostState,
+                                result = result,
+                                onUndo = onUndo,
+                                onPreview = onPreview,
+                                scope = scope
+                            )
+                        }
+                        is SaveResult.Error -> {
+                            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            snackbarHostState.showSnackbar("저장 실패: ${result.message}")
+                        }
                         SaveResult.Cancelled -> Unit
                     }
                 }
