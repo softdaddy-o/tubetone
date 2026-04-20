@@ -58,9 +58,11 @@ fun WaveformCanvas(
     totalDurationMs: Long = 0L,
     minSegmentMs: Long = 1_000L,
     maxSegmentMs: Long = 30_000L,
+    zeroCrossingSnap: Boolean = true,
     barColor: Color = Color(0xFF546E7A),
     selectedColor: Color = Color(0xFF1976D2),
-    handleColor: Color = Color(0xFFFFA000)
+    handleColor: Color = Color(0xFFFFA000),
+    clampedColor: Color = Color(0xFFFFC107)
 ) {
     val density = LocalDensity.current
     val hitZonePx = remember(density) { with(density) { 24.dp.toPx() } }
@@ -92,7 +94,10 @@ fun WaveformCanvas(
                         }
                     },
                     onDrag = { change, _ ->
-                        val frac = (change.position.x / size.width).coerceIn(0f, 1f)
+                        val rawFrac = (change.position.x / size.width).coerceIn(0f, 1f)
+                        val frac = if (zeroCrossingSnap && samples.isNotEmpty()) {
+                            ZeroCrossingSnap.snapFrac(samples, rawFrac, windowRadius = 4)
+                        } else rawFrac
                         val current = selectionState.value
                         val next = when (draggingHandle) {
                             Handle.Start -> current.withStart(frac, minGapFrac, maxSpanFrac)
@@ -112,6 +117,17 @@ fun WaveformCanvas(
         val midY = size.height / 2f
         val startX = selection.startFrac * size.width
         val endX = selection.endFrac * size.width
+
+        // S3: clamp visual feedback. If the selection span matches min or max
+        // it means the user is pressed up against a clamp — brighten the
+        // handles amber so the constraint is visible. Also used by TrimScreen
+        // to fire a haptic tick on entry.
+        val spanFrac = selection.endFrac - selection.startFrac
+        val atMinClamp = kotlin.math.abs(spanFrac - minGapFrac) < 1e-3f
+        val atMaxClamp = kotlin.math.abs(spanFrac - maxSpanFrac) < 1e-3f
+        val clamped = atMinClamp || atMaxClamp
+        val activeHandleColor = if (clamped) clampedColor else handleColor
+
         for (i in 0 until barCount) {
             val x = i * barWidth
             val amp = samples[i].coerceIn(0f, 1f)
@@ -119,8 +135,9 @@ fun WaveformCanvas(
             val color = if (x in startX..endX) selectedColor else barColor
             drawLine(color, Offset(x, midY - half), Offset(x, midY + half), strokeWidth = 1.5f)
         }
-        drawLine(handleColor, Offset(startX, 0f), Offset(startX, size.height), strokeWidth = 4f)
-        drawLine(handleColor, Offset(endX, 0f), Offset(endX, size.height), strokeWidth = 4f)
+        val handleStroke = if (clamped) 6f else 4f
+        drawLine(activeHandleColor, Offset(startX, 0f), Offset(startX, size.height), strokeWidth = handleStroke)
+        drawLine(activeHandleColor, Offset(endX, 0f), Offset(endX, size.height), strokeWidth = handleStroke)
     }
 }
 
