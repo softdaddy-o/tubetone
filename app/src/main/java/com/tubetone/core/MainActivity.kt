@@ -46,8 +46,8 @@ import com.tubetone.ringtone.RingtoneWriter
 import com.tubetone.ringtone.SystemRingtoneApplier
 import com.tubetone.share.YoutubeUrlParser
 import com.tubetone.ui.theme.TubeToneTheme
-import com.tubetone.trim.MediaTrimmer
 import com.tubetone.trim.SaveResult
+import com.tubetone.trim.TrimCoordinator
 import com.tubetone.trim.TrimParams
 import com.tubetone.trim.TrimScreen
 import com.tubetone.trim.TrimUiState
@@ -174,7 +174,7 @@ private fun HomeTab(
                             }
                         }
                         val output = File(ctx.cacheDir, "trimmed/${UUID.randomUUID()}.m4a").apply { parentFile?.mkdirs() }
-                        MediaTrimmer.trim(TrimParams(
+                        TrimCoordinator.run(TrimParams(
                             inputPath = st.audioFile.absolutePath,
                             outputPath = output.absolutePath,
                             startMs = st.startMs,
