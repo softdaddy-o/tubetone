@@ -40,6 +40,7 @@ import com.tubetone.library.LibraryViewModel
 import com.tubetone.library.RingtoneRepository
 import com.tubetone.library.db.RingtoneEntity
 import com.tubetone.library.db.TubeToneDatabase
+import com.tubetone.ringtone.PriorUriCache
 import com.tubetone.ringtone.RingtoneSlot
 import com.tubetone.ringtone.RingtoneWriter
 import com.tubetone.ringtone.SystemRingtoneApplier
@@ -76,6 +77,7 @@ class MainActivity : ComponentActivity() {
 fun AppRoot(vm: ExtractionViewModel) {
     val ctx = LocalContext.current
     var tab by remember { mutableStateOf(0) }
+    val priorUriCache = remember { PriorUriCache() }
 
     Scaffold(bottomBar = {
         NavigationBar {
@@ -85,7 +87,7 @@ fun AppRoot(vm: ExtractionViewModel) {
     }) { padding ->
         Box(Modifier.padding(padding)) {
             when (tab) {
-                0 -> HomeTab(vm, ctx)
+                0 -> HomeTab(vm, ctx, priorUriCache)
                 1 -> {
                     val libVm: LibraryViewModel = viewModel(factory = viewModelFactory {
                         initializer { LibraryViewModel(RingtoneRepository(TubeToneDatabase.get(ctx).ringtoneDao())) }
@@ -117,7 +119,8 @@ private enum class DupAction { Overwrite, NewFile, Cancel }
 @Composable
 private fun HomeTab(
     vm: ExtractionViewModel,
-    ctx: android.content.Context
+    ctx: android.content.Context,
+    priorUriCache: PriorUriCache
 ) {
     val state by vm.state.collectAsState()
     var pendingDup by remember { mutableStateOf<((DupAction) -> Unit)?>(null) }
@@ -152,66 +155,96 @@ private fun HomeTab(
                     )
                 ).also { it.initialThirtySecond() }
             }
-            TrimScreen(vm = trimVm, onSaveRequested = { title, slot, applyDefault ->
-                try {
-                    val st = trimVm.state.value
-                    val dao = TubeToneDatabase.get(ctx).ringtoneDao()
-                    val dup = dao.findDuplicate(st.metadata.videoId, st.startMs, st.endMs)
-                    if (dup != null) {
-                        val action = kotlinx.coroutines.suspendCancellableCoroutine<DupAction> { cont ->
-                            pendingDup = { a -> if (cont.isActive) cont.resumeWith(Result.success(a)) }
-                            cont.invokeOnCancellation { pendingDup = null }
+            TrimScreen(
+                vm = trimVm,
+                onSaveRequested = { title, slot, applyDefault ->
+                    try {
+                        val st = trimVm.state.value
+                        val dao = TubeToneDatabase.get(ctx).ringtoneDao()
+                        val dup = dao.findDuplicate(st.metadata.videoId, st.startMs, st.endMs)
+                        if (dup != null) {
+                            val action = kotlinx.coroutines.suspendCancellableCoroutine<DupAction> { cont ->
+                                pendingDup = { a -> if (cont.isActive) cont.resumeWith(Result.success(a)) }
+                                cont.invokeOnCancellation { pendingDup = null }
+                            }
+                            when (action) {
+                                DupAction.Cancel -> return@TrimScreen SaveResult.Cancelled
+                                DupAction.Overwrite -> dao.delete(dup.id)
+                                DupAction.NewFile -> { /* proceed */ }
+                            }
                         }
-                        when (action) {
-                            DupAction.Cancel -> return@TrimScreen SaveResult.Cancelled
-                            DupAction.Overwrite -> dao.delete(dup.id)
-                            DupAction.NewFile -> { /* proceed */ }
+                        val output = File(ctx.cacheDir, "trimmed/${UUID.randomUUID()}.m4a").apply { parentFile?.mkdirs() }
+                        MediaTrimmer.trim(TrimParams(
+                            inputPath = st.audioFile.absolutePath,
+                            outputPath = output.absolutePath,
+                            startMs = st.startMs,
+                            endMs = st.endMs,
+                            fade = st.fadeEnabled
+                        ))
+                        val written = RingtoneWriter(ctx).writeAsRingtone(output, title, slot)
+                        val applier = SystemRingtoneApplier(ctx)
+                        val canWrite = applier.canWriteSettings()
+                        val appliedNow = applyDefault && canWrite
+                        val entity = RingtoneEntity(
+                            id = UUID.randomUUID().toString(),
+                            title = title,
+                            sourceUrl = if (st.source == RingtoneSource.LOCAL) "" else YoutubeUrlParser.canonicalUrl(st.metadata.videoId),
+                            sourceVideoId = st.metadata.videoId,
+                            sourceTitle = st.metadata.title,
+                            thumbnailUrl = st.metadata.thumbnailUrl,
+                            startMs = st.startMs, endMs = st.endMs, durationMs = st.segmentMs,
+                            fadeEnabled = st.fadeEnabled,
+                            outputUri = written.uri.toString(),
+                            outputFilePath = written.filePath,
+                            originalCachePath = st.audioFile.absolutePath,
+                            createdAt = System.currentTimeMillis(),
+                            lastAppliedAt = if (appliedNow) System.currentTimeMillis() else null,
+                            slotType = slot.ringtoneManagerType,
+                            source = st.source.name
+                        )
+                        RingtoneRepository(dao).save(entity)
+                        var permissionWarning: String? = null
+                        var undoAvailable = false
+                        if (applyDefault) {
+                            if (canWrite) {
+                                // Capture the currently-applied system URI for this slot BEFORE
+                                // we overwrite it, so the UNDO action can restore.
+                                val prior = runCatching { applier.currentDefault(slot) }.getOrNull()
+                                priorUriCache.remember(slot, prior)
+                                applier.setAsDefault(written.uri, slot)
+                                undoAvailable = prior != null
+                            } else {
+                                applier.openWriteSettingsScreen()
+                                permissionWarning = "권한을 허용하면 즉시 적용됩니다"
+                            }
+                        }
+                        val detail = "${st.metadata.title.take(24)} ${formatMmSsShort(st.startMs)}-${formatMmSsShort(st.endMs)}"
+                        SaveResult.Success(
+                            slot = slot,
+                            appliedAsDefault = appliedNow,
+                            writtenUri = written.uri,
+                            undoAvailable = undoAvailable && appliedNow,
+                            detail = detail,
+                            warning = permissionWarning
+                        )
+                    } catch (t: Throwable) {
+                        SaveResult.Error(t.message ?: t::class.simpleName ?: "알 수 없는 오류")
+                    }
+                },
+                onUndo = { slot ->
+                    priorUriCache.take(slot)?.let { prev ->
+                        val applier = SystemRingtoneApplier(ctx)
+                        if (applier.canWriteSettings()) {
+                            runCatching { applier.setAsDefault(prev, slot) }
                         }
                     }
-                    val output = File(ctx.cacheDir, "trimmed/${UUID.randomUUID()}.m4a").apply { parentFile?.mkdirs() }
-                    MediaTrimmer.trim(TrimParams(
-                        inputPath = st.audioFile.absolutePath,
-                        outputPath = output.absolutePath,
-                        startMs = st.startMs,
-                        endMs = st.endMs,
-                        fade = st.fadeEnabled
-                    ))
-                    val written = RingtoneWriter(ctx).writeAsRingtone(output, title, slot)
-                    val applier = SystemRingtoneApplier(ctx)
-                    val canWrite = applier.canWriteSettings()
-                    val appliedNow = applyDefault && canWrite
-                    val entity = RingtoneEntity(
-                        id = UUID.randomUUID().toString(),
-                        title = title,
-                        sourceUrl = if (st.source == RingtoneSource.LOCAL) "" else YoutubeUrlParser.canonicalUrl(st.metadata.videoId),
-                        sourceVideoId = st.metadata.videoId,
-                        sourceTitle = st.metadata.title,
-                        thumbnailUrl = st.metadata.thumbnailUrl,
-                        startMs = st.startMs, endMs = st.endMs, durationMs = st.segmentMs,
-                        fadeEnabled = st.fadeEnabled,
-                        outputUri = written.uri.toString(),
-                        outputFilePath = written.filePath,
-                        originalCachePath = st.audioFile.absolutePath,
-                        createdAt = System.currentTimeMillis(),
-                        lastAppliedAt = if (appliedNow) System.currentTimeMillis() else null,
-                        slotType = slot.ringtoneManagerType,
-                        source = st.source.name
-                    )
-                    RingtoneRepository(dao).save(entity)
-                    var permissionWarning: String? = null
-                    if (applyDefault) {
-                        if (canWrite) {
-                            applier.setAsDefault(written.uri, slot)
-                        } else {
-                            applier.openWriteSettingsScreen()
-                            permissionWarning = "권한을 허용하면 즉시 적용됩니다"
-                        }
-                    }
-                    SaveResult.Success(slot, appliedAsDefault = appliedNow, warning = permissionWarning)
-                } catch (t: Throwable) {
-                    SaveResult.Error(t.message ?: t::class.simpleName ?: "알 수 없는 오류")
+                    Unit
+                },
+                onPreview = { uri ->
+                    SystemRingtoneApplier(ctx).preview(uri)
+                    Unit
                 }
-            })
+            )
         }
         ExtractionState.Idle -> HomeEntryScreen(
             onStart = { videoId -> ExtractionForegroundService.start(ctx, videoId) },
@@ -241,5 +274,10 @@ private fun HomeTab(
             }
         )
     }
+}
+
+private fun formatMmSsShort(ms: Long): String {
+    val s = ms / 1000
+    return "%02d:%02d".format(s / 60, s % 60)
 }
 

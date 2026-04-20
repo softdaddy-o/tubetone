@@ -11,8 +11,10 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -36,6 +38,12 @@ sealed class SaveResult {
     data class Success(
         val slot: RingtoneSlot,
         val appliedAsDefault: Boolean,
+        /** URI of the newly-written ringtone — used by PREVIEW. */
+        val writtenUri: android.net.Uri? = null,
+        /** Whether an UNDO action should be offered (set only if the overwrite captured a prior URI). */
+        val undoAvailable: Boolean = false,
+        /** Informative Snackbar subtitle, e.g. "Rick Astley 00:12-42". */
+        val detail: String? = null,
         /** Optional inline warning appended to the success message. */
         val warning: String? = null
     ) : SaveResult()
@@ -47,7 +55,9 @@ sealed class SaveResult {
 @Composable
 fun TrimScreen(
     vm: TrimViewModel,
-    onSaveRequested: suspend (title: String, slot: RingtoneSlot, applyAsDefault: Boolean) -> SaveResult
+    onSaveRequested: suspend (title: String, slot: RingtoneSlot, applyAsDefault: Boolean) -> SaveResult,
+    onUndo: (suspend (RingtoneSlot) -> Unit)? = null,
+    onPreview: ((android.net.Uri) -> Unit)? = null
 ) {
     val state by vm.state.collectAsState()
     val ctx = LocalContext.current
@@ -100,16 +110,17 @@ fun TrimScreen(
                 showSheet = false
                 scope.launch {
                     val result = onSaveRequested(title, slot, applyDefault)
-                    val message: String? = when (result) {
-                        is SaveResult.Success -> {
-                            val base = if (result.appliedAsDefault) "✓ ${result.slot.koreanLabel}(으)로 설정되었습니다"
-                            else "✓ ${result.slot.koreanLabel} 저장 완료"
-                            if (result.warning != null) "$base · ${result.warning}" else base
-                        }
-                        is SaveResult.Error -> "저장 실패: ${result.message}"
-                        SaveResult.Cancelled -> null
+                    when (result) {
+                        is SaveResult.Success -> showSuccessSnackbar(
+                            host = snackbarHostState,
+                            result = result,
+                            onUndo = onUndo,
+                            onPreview = onPreview,
+                            scope = scope
+                        )
+                        is SaveResult.Error -> snackbarHostState.showSnackbar("저장 실패: ${result.message}")
+                        SaveResult.Cancelled -> Unit
                     }
-                    if (message != null) snackbarHostState.showSnackbar(message)
                 }
             }
         )
@@ -120,3 +131,59 @@ private fun formatMmSs(ms: Long): String {
     val s = ms / 1000
     return "%02d:%02d".format(s / 60, s % 60)
 }
+
+/**
+ * Informative post-save Snackbar. Material 3 action-carrying Snackbar supports
+ * a single action label, so we prioritise UNDO when the overwrite captured a
+ * prior URI; otherwise offer PREVIEW. 6-second duration per M3 spec.
+ */
+private suspend fun showSuccessSnackbar(
+    host: SnackbarHostState,
+    result: SaveResult.Success,
+    onUndo: (suspend (RingtoneSlot) -> Unit)?,
+    onPreview: ((android.net.Uri) -> Unit)?,
+    scope: kotlinx.coroutines.CoroutineScope
+) {
+    val base = if (result.appliedAsDefault) "✓ ${result.slot.koreanLabel}(으)로 설정"
+    else "✓ ${result.slot.koreanLabel} 저장 완료"
+    val detail = result.detail?.let { " · $it" } ?: ""
+    val warn = result.warning?.let { " · $it" } ?: ""
+    val message = "$base$detail$warn"
+
+    val canUndo = result.undoAvailable && onUndo != null && result.appliedAsDefault
+    val canPreview = result.writtenUri != null && onPreview != null
+
+    val actionLabel = when {
+        canUndo -> "UNDO"
+        canPreview -> "PREVIEW"
+        else -> null
+    }
+
+    val r = host.showSnackbar(
+        message = message,
+        actionLabel = actionLabel,
+        duration = SnackbarDuration.Short,
+        withDismissAction = true
+    )
+    if (r == SnackbarResult.ActionPerformed) {
+        when {
+            canUndo -> onUndo?.invoke(result.slot)
+            canPreview -> result.writtenUri?.let { onPreview?.invoke(it) }
+        }
+        // If we handled UNDO, offer PREVIEW as a follow-up so the user can
+        // still hear what they saved before it was reverted.
+        if (canUndo && canPreview) {
+            scope.launch {
+                val second = host.showSnackbar(
+                    message = "복원 완료. 저장된 벨소리를 미리 들어볼까요?",
+                    actionLabel = "PREVIEW",
+                    duration = SnackbarDuration.Short
+                )
+                if (second == SnackbarResult.ActionPerformed) {
+                    result.writtenUri?.let { onPreview?.invoke(it) }
+                }
+            }
+        }
+    }
+}
+
