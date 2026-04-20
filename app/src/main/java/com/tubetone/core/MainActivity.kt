@@ -43,6 +43,7 @@ import com.tubetone.library.db.TubeToneDatabase
 import com.tubetone.ringtone.PriorUriCache
 import com.tubetone.ringtone.RingtoneSlot
 import com.tubetone.ringtone.RingtoneWriter
+import com.tubetone.ringtone.SlotPreferences
 import com.tubetone.ringtone.SystemRingtoneApplier
 import com.tubetone.share.YoutubeUrlParser
 import com.tubetone.ui.theme.TubeToneTheme
@@ -78,6 +79,7 @@ fun AppRoot(vm: ExtractionViewModel) {
     val ctx = LocalContext.current
     var tab by remember { mutableStateOf(0) }
     val priorUriCache = remember { PriorUriCache() }
+    val slotPrefs = remember { SlotPreferences(ctx) }
 
     Scaffold(bottomBar = {
         NavigationBar {
@@ -87,7 +89,7 @@ fun AppRoot(vm: ExtractionViewModel) {
     }) { padding ->
         Box(Modifier.padding(padding)) {
             when (tab) {
-                0 -> HomeTab(vm, ctx, priorUriCache)
+                0 -> HomeTab(vm, ctx, priorUriCache, slotPrefs)
                 1 -> {
                     val libVm: LibraryViewModel = viewModel(factory = viewModelFactory {
                         initializer { LibraryViewModel(RingtoneRepository(TubeToneDatabase.get(ctx).ringtoneDao())) }
@@ -120,7 +122,8 @@ private enum class DupAction { Overwrite, NewFile, Cancel }
 private fun HomeTab(
     vm: ExtractionViewModel,
     ctx: android.content.Context,
-    priorUriCache: PriorUriCache
+    priorUriCache: PriorUriCache,
+    slotPrefs: SlotPreferences
 ) {
     val state by vm.state.collectAsState()
     var pendingDup by remember { mutableStateOf<((DupAction) -> Unit)?>(null) }
@@ -157,6 +160,17 @@ private fun HomeTab(
             }
             TrimScreen(
                 vm = trimVm,
+                initialSlot = slotPrefs.lastUsed(),
+                occupantLabel = { slotToShow ->
+                    // S6 — current occupant for the selected slot. Return null
+                    // if the device has no default or RingtoneManager fails.
+                    runCatching {
+                        val applier = SystemRingtoneApplier(ctx)
+                        val uri = applier.currentDefault(slotToShow) ?: return@runCatching null
+                        val rt = android.media.RingtoneManager.getRingtone(ctx, uri)
+                        rt?.getTitle(ctx)
+                    }.getOrNull()
+                },
                 onSaveRequested = { title, slot, applyDefault ->
                     try {
                         val st = trimVm.state.value
@@ -203,6 +217,8 @@ private fun HomeTab(
                             source = st.source.name
                         )
                         RingtoneRepository(dao).save(entity)
+                        // S5 — remember the slot the user just picked.
+                        slotPrefs.setLastUsed(slot)
                         var permissionWarning: String? = null
                         var undoAvailable = false
                         if (applyDefault) {

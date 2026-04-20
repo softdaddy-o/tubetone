@@ -31,10 +31,12 @@ import com.tubetone.ringtone.RingtoneSlot
 fun SaveConfirmSheet(
     defaultTitle: String,
     onDismiss: () -> Unit,
-    onConfirm: (title: String, slot: RingtoneSlot, applyAsDefault: Boolean) -> Unit
+    onConfirm: (title: String, slot: RingtoneSlot, applyAsDefault: Boolean) -> Unit,
+    initialSlot: RingtoneSlot = RingtoneSlot.Ringtone,
+    occupantLabel: (RingtoneSlot) -> String? = { null }
 ) {
     var title by remember { mutableStateOf(defaultTitle.take(30)) }
-    var slot by remember { mutableStateOf(RingtoneSlot.Ringtone) }
+    var slot by remember { mutableStateOf(initialSlot) }
     var applyDefault by remember { mutableStateOf(true) }
     val slots = remember { RingtoneSlot.values().toList() }
 
@@ -60,6 +62,15 @@ fun SaveConfirmSheet(
                         label = { Text(s.koreanLabel) }
                     )
                 }
+            }
+            // S6 — show the title of whichever file currently occupies this
+            // slot, so the user knows what they're about to replace.
+            occupantLabel(slot)?.let { name ->
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    text = "현재: $name",
+                    style = MaterialTheme.typography.labelSmall
+                )
             }
             Spacer(Modifier.height(12.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {

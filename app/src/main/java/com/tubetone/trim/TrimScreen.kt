@@ -57,7 +57,9 @@ fun TrimScreen(
     vm: TrimViewModel,
     onSaveRequested: suspend (title: String, slot: RingtoneSlot, applyAsDefault: Boolean) -> SaveResult,
     onUndo: (suspend (RingtoneSlot) -> Unit)? = null,
-    onPreview: ((android.net.Uri) -> Unit)? = null
+    onPreview: ((android.net.Uri) -> Unit)? = null,
+    initialSlot: RingtoneSlot = RingtoneSlot.Ringtone,
+    occupantLabel: (RingtoneSlot) -> String? = { null }
 ) {
     val state by vm.state.collectAsState()
     val ctx = LocalContext.current
@@ -105,6 +107,8 @@ fun TrimScreen(
     if (showSheet) {
         SaveConfirmSheet(
             defaultTitle = state.metadata.title,
+            initialSlot = initialSlot,
+            occupantLabel = occupantLabel,
             onDismiss = { showSheet = false },
             onConfirm = { title, slot, applyDefault ->
                 showSheet = false
