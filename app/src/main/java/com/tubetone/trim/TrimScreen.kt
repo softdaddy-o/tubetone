@@ -17,6 +17,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -60,6 +61,7 @@ fun TrimScreen(
     onSaveRequested: suspend (title: String, slot: RingtoneSlot, applyAsDefault: Boolean) -> SaveResult,
     onUndo: (suspend (RingtoneSlot) -> Unit)? = null,
     onPreview: ((android.net.Uri) -> Unit)? = null,
+    onBack: (() -> Unit)? = null,
     initialSlot: RingtoneSlot = RingtoneSlot.Ringtone,
     occupantLabel: (RingtoneSlot) -> String? = { null }
 ) {
@@ -67,6 +69,8 @@ fun TrimScreen(
     val ctx = LocalContext.current
     val haptics = LocalHapticFeedback.current
     val preview = remember { ExoPreviewController(ctx) }
+
+    if (onBack != null) BackHandler(onBack = onBack)
     DisposableEffect(state.audioFile) {
         preview.load(state.audioFile, state.startMs, state.endMs)
         onDispose { preview.release() }
@@ -105,6 +109,8 @@ fun TrimScreen(
                 Spacer(Modifier.width(8.dp))
                 FilterChip(selected = state.loopPreview, onClick = vm::toggleLoop, label = { Text("반복") })
             }
+            Spacer(Modifier.height(12.dp))
+            AudioQualityRow(state = state, onBitrateChange = vm::setOutputBitrate)
         }
     }
     if (showSheet) {
@@ -143,6 +149,42 @@ fun TrimScreen(
 private fun formatMmSs(ms: Long): String {
     val s = ms / 1000
     return "%02d:%02d".format(s / 60, s % 60)
+}
+
+@Composable
+private fun AudioQualityRow(
+    state: TrimUiState,
+    onBitrateChange: (Int) -> Unit
+) {
+    val codecLabel = state.sourceCodec
+        ?.removePrefix("audio/")
+        ?.uppercase()
+        ?.let { if (it == "MP4A-LATM") "AAC" else it }
+        ?: "?"
+    val bitrateLabel = state.sourceBitrate
+        ?.let { "${it / 1000} kbps" }
+        ?: "?"
+    Column {
+        Text(
+            "원본: $codecLabel · $bitrateLabel",
+            style = MaterialTheme.typography.labelSmall
+        )
+        if (state.fadeEnabled) {
+            Spacer(Modifier.height(6.dp))
+            Text("출력 비트레이트 (페이드 시):", style = MaterialTheme.typography.labelSmall)
+            Spacer(Modifier.height(4.dp))
+            Row {
+                listOf(128, 192, 256, 320).forEach { kbps ->
+                    FilterChip(
+                        selected = state.outputBitrateKbps == kbps,
+                        onClick = { onBitrateChange(kbps) },
+                        label = { Text("${kbps}k") },
+                        modifier = Modifier.padding(end = 6.dp)
+                    )
+                }
+            }
+        }
+    }
 }
 
 /**

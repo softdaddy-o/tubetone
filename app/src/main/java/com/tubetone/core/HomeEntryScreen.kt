@@ -4,6 +4,7 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -65,6 +66,11 @@ fun HomeEntryScreen(
     // friendly, no READ_MEDIA_* permission required.
     val pickFile = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? -> if (uri != null) onLocalFile(uri) }
+
+    // Photo picker (video only) — uses Android system gallery, no permission needed.
+    val pickGalleryVideo = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
     ) { uri: Uri? -> if (uri != null) onLocalFile(uri) }
 
     Scaffold { padding ->
@@ -131,6 +137,15 @@ fun HomeEntryScreen(
                 onClick = { pickFile.launch(arrayOf("audio/*", "video/*")) },
                 modifier = Modifier.fillMaxWidth()
             ) { Text("기기 파일에서 만들기") }
+            Spacer(Modifier.height(Spacing.s8))
+            OutlinedButton(
+                onClick = {
+                    pickGalleryVideo.launch(
+                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)
+                    )
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) { Text("갤러리에서 동영상 선택") }
         }
     }
 }

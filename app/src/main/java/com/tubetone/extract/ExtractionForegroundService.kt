@@ -146,5 +146,10 @@ class ExtractionForegroundService : Service() {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) context.startForegroundService(i)
             else context.startService(i)
         }
+
+        fun reset() {
+            stateRef.set(ExtractionState.Idle)
+            _stateFlow.tryEmit(ExtractionState.Idle)
+        }
     }
 }

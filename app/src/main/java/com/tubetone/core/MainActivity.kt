@@ -160,6 +160,7 @@ private fun HomeTab(
             }
             TrimScreen(
                 vm = trimVm,
+                onBack = { ExtractionForegroundService.reset() },
                 initialSlot = slotPrefs.lastUsed(),
                 occupantLabel = { slotToShow ->
                     // S6 — current occupant for the selected slot. Return null
@@ -193,7 +194,8 @@ private fun HomeTab(
                             outputPath = output.absolutePath,
                             startMs = st.startMs,
                             endMs = st.endMs,
-                            fade = st.fadeEnabled
+                            fade = st.fadeEnabled,
+                            outputBitrateKbps = st.outputBitrateKbps
                         ))
                         val written = RingtoneWriter(ctx).writeAsRingtone(output, title, slot)
                         val applier = SystemRingtoneApplier(ctx)

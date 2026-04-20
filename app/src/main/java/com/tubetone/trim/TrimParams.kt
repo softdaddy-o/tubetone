@@ -5,7 +5,8 @@ data class TrimParams(
     val outputPath: String,
     val startMs: Long,
     val endMs: Long,
-    val fade: Boolean
+    val fade: Boolean,
+    val outputBitrateKbps: Int = 128
 ) {
     init {
         require(endMs > startMs) { "endMs must be > startMs" }

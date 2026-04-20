@@ -30,7 +30,6 @@ object MediaReencoder {
     private const val TIMEOUT_US = 10_000L
     private const val FADE_IN_MS = 100
     private const val FADE_OUT_MS = 300
-    private const val OUTPUT_BITRATE = 128_000
 
     suspend fun trimAndFade(params: TrimParams): Unit = withContext(Dispatchers.IO) {
         require(params.fade) { "MediaReencoder is only for fade=true; use MediaTrimmer for copy-trim" }
@@ -57,7 +56,7 @@ object MediaReencoder {
             MediaFormat.MIMETYPE_AUDIO_AAC, sampleRate, channelCount
         ).apply {
             setInteger(MediaFormat.KEY_AAC_PROFILE, MediaCodecInfo.CodecProfileLevel.AACObjectLC)
-            setInteger(MediaFormat.KEY_BIT_RATE, OUTPUT_BITRATE)
+            setInteger(MediaFormat.KEY_BIT_RATE, params.outputBitrateKbps * 1000)
             setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, 16 * 1024)
         }
         val encoder = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_AUDIO_AAC).apply {

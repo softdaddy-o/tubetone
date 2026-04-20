@@ -52,6 +52,16 @@ data class WaveformSelection(val startFrac: Float, val endFrac: Float) {
         val newStart = startFrac.coerceIn(minStart, maxStart)
         return WaveformSelection(newStart, clampedEnd)
     }
+
+    /**
+     * Shift both handles by [deltaFrac], clamped so neither escapes [0, 1].
+     * The span is preserved exactly.
+     */
+    fun withShift(deltaFrac: Float): WaveformSelection {
+        val span = endFrac - startFrac
+        val newStart = (startFrac + deltaFrac).coerceIn(0f, 1f - span)
+        return WaveformSelection(newStart, newStart + span)
+    }
 }
 
 @Composable
@@ -90,27 +100,33 @@ fun WaveformCanvas(
                         val endPx = current.endFrac * size.width
                         val dStart = kotlin.math.abs(pos.x - startPx)
                         val dEnd = kotlin.math.abs(pos.x - endPx)
-                        // Prefer the handle whose hit zone was struck. If both are in range,
-                        // pick the nearer one. If neither, fall back to nearest.
+                        val inBodyZone = pos.x > startPx + hitZonePx && pos.x < endPx - hitZonePx
+                        // Prefer handle hit zones; fall back to body if inside middle, else nearest handle.
                         draggingHandle = when {
                             dStart <= hitZonePx && dEnd <= hitZonePx -> if (dStart <= dEnd) Handle.Start else Handle.End
                             dStart <= hitZonePx -> Handle.Start
                             dEnd <= hitZonePx -> Handle.End
+                            inBodyZone -> Handle.Body
                             dStart <= dEnd -> Handle.Start
                             else -> Handle.End
                         }
                         haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                     },
-                    onDrag = { change, _ ->
-                        val rawFrac = (change.position.x / size.width).coerceIn(0f, 1f)
-                        val frac = if (zeroCrossingSnap && samples.isNotEmpty()) {
-                            ZeroCrossingSnap.snapFrac(samples, rawFrac, windowRadius = 4)
-                        } else rawFrac
+                    onDrag = { change, dragAmount ->
                         val current = selectionState.value
                         val next = when (draggingHandle) {
-                            Handle.Start -> current.withStart(frac, minGapFrac, maxSpanFrac)
-                            Handle.End -> current.withEnd(frac, minGapFrac, maxSpanFrac)
-                            null -> current
+                            Handle.Body -> current.withShift(dragAmount.x / size.width)
+                            else -> {
+                                val rawFrac = (change.position.x / size.width).coerceIn(0f, 1f)
+                                val frac = if (zeroCrossingSnap && samples.isNotEmpty()) {
+                                    ZeroCrossingSnap.snapFrac(samples, rawFrac, windowRadius = 4)
+                                } else rawFrac
+                                when (draggingHandle) {
+                                    Handle.Start -> current.withStart(frac, minGapFrac, maxSpanFrac)
+                                    Handle.End -> current.withEnd(frac, minGapFrac, maxSpanFrac)
+                                    else -> current
+                                }
+                            }
                         }
                         if (next != current) {
                             onSelectionChange(next)
@@ -158,4 +174,4 @@ fun WaveformCanvas(
     }
 }
 
-private enum class Handle { Start, End }
+private enum class Handle { Start, End, Body }
