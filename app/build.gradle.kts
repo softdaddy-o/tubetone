@@ -40,6 +40,17 @@ android {
         }
     }
     testOptions.unitTests.isIncludeAndroidResources = true
+
+    // Expose exported Room schemas to Robolectric tests and androidTest.
+    // MigrationTestHelper reads from the test-context assets folder; the debug
+    // variant is what the unit-test runner loads, and it adds < 5KB to APKs
+    // that are already gated to debug builds.
+    sourceSets.getByName("debug") {
+        assets.srcDirs("$projectDir/schemas")
+    }
+    sourceSets.getByName("androidTest") {
+        assets.srcDirs("$projectDir/schemas")
+    }
 }
 
 kapt { arguments { arg("room.schemaLocation", "$projectDir/schemas") } }
