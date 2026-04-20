@@ -4,6 +4,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -16,6 +17,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
+import com.tubetone.ui.theme.Spacing
 
 data class WaveformSelection(val startFrac: Float, val endFrac: Float) {
     init { require(startFrac in 0f..1f && endFrac in 0f..1f && startFrac < endFrac) }
@@ -59,10 +61,10 @@ fun WaveformCanvas(
     minSegmentMs: Long = 1_000L,
     maxSegmentMs: Long = 30_000L,
     zeroCrossingSnap: Boolean = true,
-    barColor: Color = Color(0xFF546E7A),
-    selectedColor: Color = Color(0xFF1976D2),
-    handleColor: Color = Color(0xFFFFA000),
-    clampedColor: Color = Color(0xFFFFC107)
+    barColor: Color = MaterialTheme.colorScheme.onSurfaceVariant,
+    selectedColor: Color = MaterialTheme.colorScheme.primary,
+    handleColor: Color = MaterialTheme.colorScheme.secondary,
+    clampedColor: Color = MaterialTheme.colorScheme.tertiary
 ) {
     val density = LocalDensity.current
     val hitZonePx = remember(density) { with(density) { 24.dp.toPx() } }
@@ -74,7 +76,7 @@ fun WaveformCanvas(
     Canvas(
         modifier = modifier
             .fillMaxWidth()
-            .height(160.dp)
+            .height(Spacing.waveformHeight)
             .pointerInput(Unit) {
                 detectDragGestures(
                     onDragStart = { pos ->
